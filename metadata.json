@@ -1,0 +1,219 @@
+import React, { useState } from 'react';
+import { CneBulletin, UserProfile } from '../types';
+import { BulletinCard } from './BulletinCard';
+import { 
+  Search, 
+  Filter, 
+  Sparkles, 
+  Layers, 
+  SlidersHorizontal, 
+  CheckCircle2, 
+  AlertTriangle, 
+  Inbox,
+  ArrowUpDown,
+  RotateCcw,
+  Plus
+} from 'lucide-react';
+
+interface FeedListProps {
+  bulletins: CneBulletin[];
+  currentUser: UserProfile;
+  onDispatchEmail: (bulletin: CneBulletin) => void;
+  onOpenFilters: () => void;
+  onViewTransparencyDetail: (bulletin: CneBulletin) => void;
+}
+
+export const FeedList: React.FC<FeedListProps> = ({
+  bulletins = [],
+  currentUser,
+  onDispatchEmail,
+  onOpenFilters,
+  onViewTransparencyDetail
+}) => {
+  const safeBulletins = bulletins || [];
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [onlyMatching, setOnlyMatching] = useState<boolean>(true);
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [sortBy, setSortBy] = useState<'date' | 'relevance' | 'urgency'>('relevance');
+
+  // Filter logic
+  const filtered = safeBulletins.filter(b => {
+    if (!b) return false;
+    // Matching toggle
+    if (onlyMatching && !b.matchesUserFilters) return false;
+
+    // Category
+    if (selectedCategory !== 'all' && b.category !== selectedCategory) return false;
+
+    // Search query
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const inTitle = (b.title || '').toLowerCase().includes(q);
+      const inCode = (b.cneCode || '').toLowerCase().includes(q);
+      const inSummary = (b.aiSummary || '').toLowerCase().includes(q);
+      const inProvinces = (b.extractedEntities?.provinces || []).some(p => (p || '').toLowerCase().includes(q));
+      const inCantons = (b.extractedEntities?.cantons || []).some(c => (c || '').toLowerCase().includes(q));
+      const inParties = (b.extractedEntities?.politicalParties || []).some(p => (p || '').toLowerCase().includes(q));
+      const inArticles = (b.extractedEntities?.legalArticles || []).some(a => (a || '').toLowerCase().includes(q));
+
+      if (!inTitle && !inCode && !inSummary && !inProvinces && !inCantons && !inParties && !inArticles) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+
+  // Sort logic
+  const sorted = [...filtered].sort((a, b) => {
+    if (sortBy === 'relevance') {
+      return (b.aiRelevanceScore || 0) - (a.aiRelevanceScore || 0);
+    }
+    if (sortBy === 'urgency') {
+      return (b.aiUrgencyScore || 0) - (a.aiUrgencyScore || 0);
+    }
+    return new Date(b.publishedAt || 0).getTime() - new Date(a.publishedAt || 0).getTime();
+  });
+
+  const matchingTotal = safeBulletins.filter(b => b && b.matchesUserFilters).length;
+
+  return (
+    <div className="space-y-5">
+      {/* Control Bar: Filters & Search */}
+      <div className="rounded-2xl bg-white/[0.03] border border-white/10 p-4 sm:p-5 backdrop-blur-md shadow-xl shadow-black/30 space-y-4">
+        
+        {/* Row 1: Search and Match Toggle */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex-1 min-w-[240px] relative">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Buscar por provincia (ej. Imbabura, Pichincha), partido, candidato, código..."
+              className="w-full pl-10 pr-3.5 py-2.5 bg-black/40 border border-white/10 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-hidden focus:border-cyan-400 transition-colors"
+            />
+          </div>
+
+          <div className="flex items-center flex-wrap gap-2.5">
+            {/* Toggle matching only */}
+            <button
+              onClick={() => setOnlyMatching(!onlyMatching)}
+              className={`px-3.5 py-2 rounded-xl text-xs font-semibold border transition-all flex items-center gap-2 ${
+                onlyMatching
+                  ? 'bg-blue-500/20 border-blue-500/40 text-blue-300 shadow-sm'
+                  : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
+              }`}
+            >
+              <CheckCircle2 className={`w-3.5 h-3.5 ${onlyMatching ? 'text-cyan-400' : 'text-slate-500'}`} />
+              <span>Solo Coincidentes con Mi Perfil ({matchingTotal})</span>
+            </button>
+
+            {/* Sort selector */}
+            <div className="flex items-center gap-1 bg-black/40 border border-white/10 rounded-xl p-1 text-xs">
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider pl-2 pr-1 flex items-center gap-1">
+                <ArrowUpDown className="w-3 h-3 text-cyan-400" />
+                <span>Orden:</span>
+              </span>
+              <select
+                value={sortBy}
+                onChange={e => setSortBy(e.target.value as any)}
+                className="bg-transparent text-slate-200 text-xs py-1 pr-2 font-medium focus:outline-hidden cursor-pointer"
+              >
+                <option value="relevance" className="bg-[#080C14] text-white">Mayor Relevancia IA</option>
+                <option value="urgency" className="bg-[#080C14] text-white">Mayor Urgencia</option>
+                <option value="date" className="bg-[#080C14] text-white">Más Recientes</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Row 2: Category chips */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
+          {[
+            { id: 'all', label: 'Todas las Publicaciones' },
+            { id: 'resolucion_oficial', label: 'Resoluciones del Pleno' },
+            { id: 'desmentido_rumores', label: 'Desmentidos / Fake News' },
+            { id: 'impugnacion_reclamacion', label: 'Sentencias / TCE' },
+            { id: 'tramite_administrativo', label: 'Trámites / MJRV' },
+            { id: 'boletin_prensa', label: 'Boletines de Prensa' }
+          ].map(cat => {
+            const isSelected = selectedCategory === cat.id;
+            return (
+              <button
+                key={cat.id}
+                onClick={() => setSelectedCategory(cat.id)}
+                className={`px-3.5 py-1.5 rounded-xl font-medium transition-all whitespace-nowrap text-xs ${
+                  isSelected
+                    ? 'bg-blue-600 text-white font-bold shadow-md shadow-blue-900/30 border border-blue-400/30'
+                    : 'bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white border border-white/10'
+                }`}
+              >
+                {cat.label}
+              </button>
+            );
+          })}
+        </div>
+
+      </div>
+
+      {/* Results Header status */}
+      <div className="flex items-center justify-between px-1 text-xs text-slate-400">
+        <div>
+          Mostrando <strong className="text-white font-semibold">{sorted.length}</strong> de <strong className="text-white font-semibold">{safeBulletins.length}</strong> publicaciones oficiales
+          {onlyMatching && <span className="text-cyan-400 font-medium"> (Filtradas para {currentUser?.mediaOutlet || 'Prensa'})</span>}
+        </div>
+
+        <button
+          onClick={onOpenFilters}
+          className="text-cyan-400 hover:text-cyan-300 font-semibold flex items-center gap-1.5 transition-colors text-xs"
+        >
+          <SlidersHorizontal className="w-3.5 h-3.5" />
+          <span>Ajustar Provincias & Umbral</span>
+        </button>
+      </div>
+
+      {/* Cards List */}
+      {sorted.length === 0 ? (
+        <div className="p-12 rounded-2xl bg-white/[0.03] border border-white/10 backdrop-blur-md text-center space-y-3 shadow-xl">
+          <Inbox className="w-10 h-10 mx-auto text-slate-600" />
+          <h4 className="text-sm font-bold text-white">No se encontraron publicaciones con estos filtros</h4>
+          <p className="text-xs text-slate-400 max-w-md mx-auto leading-relaxed">
+            {onlyMatching 
+              ? 'Las publicaciones actuales del CNE no superan su umbral de relevancia o pertenecen a otras provincias. Puede desactivar el filtro exclusivo o ampliar sus provincias.'
+              : 'No hay documentos que coincidan con el término de búsqueda ingresado.'
+            }
+          </p>
+          <div className="flex justify-center gap-2.5 pt-2">
+            {onlyMatching && (
+              <button
+                onClick={() => setOnlyMatching(false)}
+                className="px-4 py-2 bg-white/5 hover:bg-white/10 text-slate-200 text-xs rounded-xl border border-white/10 font-semibold transition-all"
+              >
+                Ver Todas las Publicaciones CNE
+              </button>
+            )}
+            <button
+              onClick={onOpenFilters}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded-xl font-bold transition-all shadow-md shadow-blue-900/30"
+            >
+              Configurar Mis Filtros
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {sorted.map(bulletin => (
+            <BulletinCard
+              key={bulletin.id}
+              bulletin={bulletin}
+              currentUser={currentUser}
+              onDispatchEmail={onDispatchEmail}
+              onViewTransparencyDetail={onViewTransparencyDetail}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
